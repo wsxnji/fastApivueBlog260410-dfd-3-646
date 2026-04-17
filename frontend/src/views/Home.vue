@@ -3,6 +3,44 @@
     <div class="home-header">
       <h1 class="page-title">📝 最新文章</h1>
     </div>
+
+    <div class="filter-section">
+      <div class="filter-group">
+        <label class="filter-label">分类：</label>
+        <button 
+          :class="['filter-btn', { active: !selectedCategory }]" 
+          @click="filterByCategory(null)"
+        >
+          全部
+        </button>
+        <button 
+          v-for="cat in categories" 
+          :key="cat.id"
+          :class="['filter-btn', { active: selectedCategory === cat.id }]" 
+          @click="filterByCategory(cat.id)"
+        >
+          {{ cat.name }}
+        </button>
+      </div>
+      
+      <div class="filter-group">
+        <label class="filter-label">标签：</label>
+        <button 
+          :class="['filter-btn', { active: !selectedTag }]" 
+          @click="filterByTag(null)"
+        >
+          全部
+        </button>
+        <button 
+          v-for="tag in tags" 
+          :key="tag.id"
+          :class="['filter-btn', { active: selectedTag === tag.id }]" 
+          @click="filterByTag(tag.id)"
+        >
+          #{{ tag.name }}
+        </button>
+      </div>
+    </div>
     
     <div v-if="loading" class="loading">
       <div class="spinner"></div>
@@ -39,11 +77,15 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { postApi } from '../api'
+import { postApi, categoryApi, tagApi } from '../api'
 
 const posts = ref([])
+const categories = ref([])
+const tags = ref([])
 const loading = ref(true)
 const error = ref(null)
+const selectedCategory = ref(null)
+const selectedTag = ref(null)
 
 const truncateContent = (content) => {
   if (!content) return ''
@@ -67,11 +109,36 @@ const formatDate = (dateString) => {
   })
 }
 
+const loadCategories = async () => {
+  try {
+    const response = await categoryApi.getCategories()
+    categories.value = response.data
+  } catch (err) {
+    console.error('加载分类失败:', err)
+  }
+}
+
+const loadTags = async () => {
+  try {
+    const response = await tagApi.getTags()
+    tags.value = response.data
+  } catch (err) {
+    console.error('加载标签失败:', err)
+  }
+}
+
 const loadPosts = async () => {
   try {
     loading.value = true
     error.value = null
-    const response = await postApi.getPublicPosts({ limit: 20 })
+    const params = { limit: 20 }
+    if (selectedCategory.value) {
+      params.category_id = selectedCategory.value
+    }
+    if (selectedTag.value) {
+      params.tag_id = selectedTag.value
+    }
+    const response = await postApi.getPublicPosts(params)
     posts.value = response.data
   } catch (err) {
     error.value = '加载文章失败，请稍后重试'
@@ -81,7 +148,19 @@ const loadPosts = async () => {
   }
 }
 
+const filterByCategory = (categoryId) => {
+  selectedCategory.value = categoryId
+  loadPosts()
+}
+
+const filterByTag = (tagId) => {
+  selectedTag.value = tagId
+  loadPosts()
+}
+
 onMounted(() => {
+  loadCategories()
+  loadTags()
   loadPosts()
 })
 </script>
@@ -99,6 +178,52 @@ onMounted(() => {
   margin-bottom: 2rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid #eee;
+}
+
+.filter-section {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: #f8f9fa;
+  border-radius: 12px;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 1rem;
+}
+
+.filter-group:last-child {
+  margin-bottom: 0;
+}
+
+.filter-label {
+  font-weight: 600;
+  color: #2c3e50;
+  margin-right: 8px;
+}
+
+.filter-btn {
+  padding: 6px 14px;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-size: 0.9rem;
+}
+
+.filter-btn:hover {
+  border-color: #667eea;
+  color: #667eea;
+}
+
+.filter-btn.active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-color: transparent;
 }
 
 .page-title {
