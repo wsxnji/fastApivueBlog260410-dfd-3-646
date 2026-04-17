@@ -25,7 +25,11 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const url = error.config?.url || ''
+    const publicUrls = ['/posts/public', '/posts/', '/categories', '/tags', '/comments']
+    const isPublicUrl = publicUrls.some(pattern => url.includes(pattern))
+    
+    if (error.response?.status === 401 && !isPublicUrl) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       window.location.href = '/login'
@@ -66,6 +70,16 @@ export const postApi = {
     return api.get('/posts/public', { params })
   },
 
+  // 按分类获取文章
+  getPostsByCategory(categoryName, params) {
+    return api.get(`/posts/category/${categoryName}`, { params })
+  },
+
+  // 按标签获取文章
+  getPostsByTag(tagName, params) {
+    return api.get(`/posts/tag/${tagName}`, { params })
+  },
+
   // 获取单篇文章
   getPost(id) {
     return api.get(`/posts/${id}`)
@@ -89,6 +103,95 @@ export const postApi = {
   // 隐藏/显示文章（仅超级管理员）
   toggleHidden(id, isHidden) {
     return api.patch(`/posts/${id}/hidden?is_hidden=${isHidden}`)
+  },
+
+  // 点赞/取消点赞
+  toggleLike(postId) {
+    return api.post(`/likes?post_id=${postId}`)
+  },
+
+  // 获取点赞状态
+  getLikeStatus(postId) {
+    return api.get(`/posts/${postId}/like-status`)
+  },
+
+  // 收藏/取消收藏
+  toggleFavorite(postId) {
+    return api.post(`/favorites?post_id=${postId}`)
+  },
+
+  // 获取收藏状态
+  getFavoriteStatus(postId) {
+    return api.get(`/posts/${postId}/favorite-status`)
+  },
+
+  // 获取我的收藏
+  getMyFavorites() {
+    return api.get('/favorites/me')
+  },
+}
+
+// 评论相关 API
+export const commentApi = {
+  // 获取文章评论列表
+  getComments(postId) {
+    return api.get(`/posts/${postId}/comments`)
+  },
+
+  // 创建评论
+  createComment(data) {
+    return api.post('/comments', data)
+  },
+
+  // 删除评论
+  deleteComment(commentId) {
+    return api.delete(`/comments/${commentId}`)
+  },
+}
+
+// 分类相关 API
+export const categoryApi = {
+  // 获取分类列表
+  getCategories() {
+    return api.get('/categories')
+  },
+
+  // 创建分类（仅超级管理员）
+  createCategory(data) {
+    return api.post('/categories', data)
+  },
+
+  // 更新分类（仅超级管理员）
+  updateCategory(id, data) {
+    return api.put(`/categories/${id}`, data)
+  },
+
+  // 删除分类（仅超级管理员）
+  deleteCategory(id) {
+    return api.delete(`/categories/${id}`)
+  },
+}
+
+// 标签相关 API
+export const tagApi = {
+  // 获取标签列表
+  getTags() {
+    return api.get('/tags')
+  },
+
+  // 创建标签（仅超级管理员）
+  createTag(data) {
+    return api.post('/tags', data)
+  },
+
+  // 更新标签（仅超级管理员）
+  updateTag(id, data) {
+    return api.put(`/tags/${id}`, data)
+  },
+
+  // 删除标签（仅超级管理员）
+  deleteTag(id) {
+    return api.delete(`/tags/${id}`)
   },
 }
 

@@ -19,6 +19,20 @@
             required
           />
         </div>
+
+        <div class="form-group">
+          <label for="cover">文章封面（URL，非必填）</label>
+          <input
+            id="cover"
+            v-model="form.cover"
+            type="url"
+            placeholder="请输入封面图片URL"
+          />
+          <div v-if="form.cover" class="cover-preview">
+            <p class="preview-label">封面预览：</p>
+            <img :src="form.cover" alt="封面预览" class="preview-img" @error="form.cover = ''" />
+          </div>
+        </div>
         
         <div class="form-group">
           <label for="summary">文章摘要</label>
@@ -60,6 +74,7 @@ const error = ref(null)
 const submitting = ref(false)
 const form = ref({
   title: '',
+  cover: '',
   summary: '',
   content: ''
 })
@@ -72,6 +87,7 @@ const loadPost = async () => {
     post.value = response.data
     form.value = {
       title: response.data.title,
+      cover: response.data.cover || '',
       summary: response.data.summary || '',
       content: response.data.content
     }
@@ -245,5 +261,28 @@ textarea {
 
 .error {
   color: #e74c3c;
+}
+
+.cover-preview {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #fafafa;
+  border-radius: 8px;
+  border: 1px dashed #ddd;
+}
+
+.preview-label {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+  color: #666;
+  font-weight: 600;
+}
+
+.preview-img {
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: 6px;
+  object-fit: cover;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 </style>
