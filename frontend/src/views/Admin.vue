@@ -1,6 +1,5 @@
 <template>
   <div class="admin-layout">
-    <!-- 左侧菜单栏 -->
     <aside class="sidebar">
       <div class="sidebar-header">
         <h2>管理后台</h2>
@@ -17,20 +16,29 @@
         <a 
           v-if="user?.is_superuser"
           href="#" 
+          @click.prevent="currentMenu = 'categories'"
+          :class="['menu-item', { active: currentMenu === 'categories' }]"
+        >
+          <span class="menu-icon">📁</span>
+          <span class="menu-text">分类管理</span>
+        </a>
+        <a 
+          v-if="user?.is_superuser"
+          href="#" 
+          @click.prevent="currentMenu = 'tags'"
+          :class="['menu-item', { active: currentMenu === 'tags' }]"
+        >
+          <span class="menu-icon">🏷️</span>
+          <span class="menu-text">标签管理</span>
+        </a>
+        <a 
+          v-if="user?.is_superuser"
+          href="#" 
           @click.prevent="currentMenu = 'users'"
           :class="['menu-item', { active: currentMenu === 'users' }]"
         >
           <span class="menu-icon">👥</span>
           <span class="menu-text">用户管理</span>
-        </a>
-        <a 
-          v-if="user?.is_superuser"
-          href="#" 
-          @click.prevent="currentMenu = 'roles'"
-          :class="['menu-item', { active: currentMenu === 'roles' }]"
-        >
-          <span class="menu-icon">🔐</span>
-          <span class="menu-text">角色管理</span>
         </a>
       </nav>
       
@@ -51,9 +59,7 @@
       </div>
     </aside>
 
-    <!-- 主内容区 -->
     <main class="main-content">
-      <!-- 文章管理 -->
       <div v-if="currentMenu === 'posts'" class="content-section">
         <div class="section-header">
           <h1 class="page-title">文章管理</h1>
@@ -82,11 +88,12 @@
                   <span v-if="post.author_id === user?.id" class="my-post-badge">我的</span>
                 </td>
                 <td>
-                  <span :class="['category-tag', 'cat-' + post.category]">{{ post.category || '其它' }}</span>
+                  <span v-if="post.category" class="category-tag">{{ post.category.name }}</span>
+                  <span v-else class="category-tag">未分类</span>
                 </td>
                 <td>
                   <div class="tags-list">
-                    <span v-for="tag in parseTags(post.tags)" :key="tag" class="post-tag">{{ tag }}</span>
+                    <span v-for="tag in post.tags" :key="tag.id" class="post-tag">{{ tag.name }}</span>
                   </div>
                 </td>
                 <td>{{ getAuthorName(post.author_id) }}</td>
@@ -97,12 +104,10 @@
                 </td>
                 <td>{{ formatDate(post.created_at) }}</td>
                 <td class="actions">
-                  <!-- 自己的文章：完整权限 -->
                   <template v-if="post.author_id === user?.id">
                     <router-link :to="`/edit/${post.id}`" class="btn btn-sm btn-edit">编辑</router-link>
                     <button @click="handleDelete(post.id)" class="btn btn-sm btn-danger">删除</button>
                   </template>
-                  <!-- 别人的文章：仅超级管理员可隐藏/显示 -->
                   <template v-else-if="user?.is_superuser">
                     <button 
                       @click="handleToggleHidden(post)" 
@@ -121,7 +126,78 @@
         </div>
       </div>
 
-      <!-- 用户管理（仅超级管理员可见） -->
+      <div v-if="currentMenu === 'categories' && user?.is_superuser" class="content-section">
+        <div class="section-header">
+          <h1 class="page-title">分类管理</h1>
+          <button class="btn btn-primary" @click="openCategoryModal()">+ 新建分类</button>
+        </div>
+        
+        <div v-if="categoriesLoading" class="loading">加载中...</div>
+        <div v-else class="data-table">
+          <table v-if="categories.length > 0">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>分类名称</th>
+                <th>描述</th>
+                <th>创建时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="cat in categories" :key="cat.id">
+                <td>{{ cat.id }}</td>
+                <td>{{ cat.name }}</td>
+                <td>{{ cat.description || '-' }}</td>
+                <td>{{ formatDate(cat.created_at) }}</td>
+                <td class="actions">
+                  <button @click="openCategoryModal(cat)" class="btn btn-sm btn-edit">编辑</button>
+                  <button @click="handleDeleteCategory(cat.id)" class="btn btn-sm btn-danger">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-else class="no-data">
+            <p>暂无分类数据</p>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="currentMenu === 'tags' && user?.is_superuser" class="content-section">
+        <div class="section-header">
+          <h1 class="page-title">标签管理</h1>
+          <button class="btn btn-primary" @click="openTagModal()">+ 新建标签</button>
+        </div>
+        
+        <div v-if="tagsLoading" class="loading">加载中...</div>
+        <div v-else class="data-table">
+          <table v-if="tags.length > 0">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>标签名称</th>
+                <th>创建时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="tag in tags" :key="tag.id">
+                <td>{{ tag.id }}</td>
+                <td>{{ tag.name }}</td>
+                <td>{{ formatDate(tag.created_at) }}</td>
+                <td class="actions">
+                  <button @click="openTagModal(tag)" class="btn btn-sm btn-edit">编辑</button>
+                  <button @click="handleDeleteTag(tag.id)" class="btn btn-sm btn-danger">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-else class="no-data">
+            <p>暂无标签数据</p>
+          </div>
+        </div>
+      </div>
+
       <div v-if="currentMenu === 'users' && user?.is_superuser" class="content-section">
         <div class="section-header">
           <h1 class="page-title">用户管理</h1>
@@ -129,8 +205,7 @@
         </div>
         
         <div v-if="usersLoading" class="loading">加载中...</div>
-        <div v-else-if="usersError" class="error">{{ usersError }}</div>
-        <div v-else class="users-table">
+        <div v-else class="data-table">
           <table v-if="users.length > 0">
             <thead>
               <tr>
@@ -164,57 +239,8 @@
           </div>
         </div>
       </div>
-
-      <!-- 角色管理（仅超级管理员可见） -->
-      <div v-if="currentMenu === 'roles' && user?.is_superuser" class="content-section">
-        <div class="section-header">
-          <h1 class="page-title">角色管理</h1>
-          <button class="btn btn-primary" @click="openCreateRoleModal">+ 新建角色</button>
-        </div>
-        
-        <div v-if="rolesLoading" class="loading">加载中...</div>
-        <div v-else-if="rolesError" class="error">{{ rolesError }}</div>
-        <div v-else class="roles-table">
-          <table v-if="roles.length > 0">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>角色名称</th>
-                <th>角色标识</th>
-                <th>描述</th>
-                <th>用户数</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="role in roles" :key="role.id">
-                <td>{{ role.id }}</td>
-                <td>
-                  <div class="role-name-cell">
-                    <span class="role-icon-small">{{ role.icon }}</span>
-                    <span>{{ role.name }}</span>
-                  </div>
-                </td>
-                <td><code class="role-code">{{ role.key }}</code></td>
-                <td>{{ role.description }}</td>
-                <td>
-                  <span class="user-count">{{ getRoleUserCount(role.key) }} 人</span>
-                </td>
-                <td class="actions">
-                  <button @click="openEditRoleModal(role)" class="btn btn-sm btn-edit">编辑</button>
-                  <button v-if="!role.is_system" @click="handleDeleteRole(role)" class="btn btn-sm btn-danger">删除</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <div v-else class="no-data">
-            <p>暂无角色数据</p>
-          </div>
-        </div>
-      </div>
     </main>
 
-    <!-- 创建用户弹窗 -->
     <div v-if="showCreateUserModal" class="modal-overlay" @click.self="showCreateUserModal = false">
       <div class="modal">
         <h3>新建用户</h3>
@@ -243,44 +269,41 @@
       </div>
     </div>
 
-    <!-- 创建/编辑角色弹窗 -->
-    <div v-if="showCreateRoleModal || showEditRoleModal" class="modal-overlay" @click.self="showCreateRoleModal = false; showEditRoleModal = false">
+    <div v-if="showCategoryModal" class="modal-overlay" @click.self="showCategoryModal = false">
       <div class="modal">
-        <h3>{{ showEditRoleModal ? '编辑角色' : '新建角色' }}</h3>
-        <form @submit.prevent="handleSaveRole">
+        <h3>{{ editingCategory ? '编辑分类' : '新建分类' }}</h3>
+        <form @submit.prevent="handleSaveCategory">
           <div class="form-group">
-            <label>角色名称 <span class="required">*</span></label>
-            <input v-model="currentRole.name" type="text" required placeholder="请输入角色名称，如：编辑">
-          </div>
-          <div class="form-group">
-            <label>角色标识 <span class="required">*</span></label>
-            <input v-model="currentRole.key" type="text" required placeholder="请输入角色标识，如：editor">
-            <small class="form-help">用于系统识别的唯一标识，只能包含英文字母和下划线</small>
-          </div>
-          <div class="form-group">
-            <label>图标</label>
-            <select v-model="currentRole.icon" class="icon-select">
-              <option value="👤">👤 用户</option>
-              <option value="🔐">🔐 管理员</option>
-              <option value="✏️">✏️ 编辑</option>
-              <option value="👁️">👁️ 访客</option>
-              <option value="⭐">⭐ VIP</option>
-              <option value="🛡️">🛡️ 安全</option>
-            </select>
+            <label>分类名称 <span class="required">*</span></label>
+            <input v-model="categoryForm.name" type="text" required placeholder="请输入分类名称">
           </div>
           <div class="form-group">
             <label>描述</label>
-            <textarea v-model="currentRole.description" rows="3" placeholder="请输入角色描述"></textarea>
-          </div>
-          <div v-if="currentRole.is_system" class="form-notice">
-            <span class="notice-icon">⚠️</span>
-            <span>系统角色不能删除</span>
+            <textarea v-model="categoryForm.description" rows="3" placeholder="请输入分类描述"></textarea>
           </div>
           <div class="modal-actions">
-            <button type="submit" class="btn btn-primary" :disabled="savingRole">
-              {{ savingRole ? '保存中...' : '保存' }}
+            <button type="submit" class="btn btn-primary" :disabled="savingCategory">
+              {{ savingCategory ? '保存中...' : '保存' }}
             </button>
-            <button type="button" class="btn btn-secondary" @click="showCreateRoleModal = false; showEditRoleModal = false">取消</button>
+            <button type="button" class="btn btn-secondary" @click="showCategoryModal = false">取消</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div v-if="showTagModal" class="modal-overlay" @click.self="showTagModal = false">
+      <div class="modal">
+        <h3>{{ editingTag ? '编辑标签' : '新建标签' }}</h3>
+        <form @submit.prevent="handleSaveTag">
+          <div class="form-group">
+            <label>标签名称 <span class="required">*</span></label>
+            <input v-model="tagForm.name" type="text" required placeholder="请输入标签名称">
+          </div>
+          <div class="modal-actions">
+            <button type="submit" class="btn btn-primary" :disabled="savingTag">
+              {{ savingTag ? '保存中...' : '保存' }}
+            </button>
+            <button type="button" class="btn btn-secondary" @click="showTagModal = false">取消</button>
           </div>
         </form>
       </div>
@@ -291,43 +314,42 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { postApi } from '../api'
+import { postApi, categoryApi, tagApi } from '../api'
 
 const router = useRouter()
 const currentMenu = ref('posts')
 const posts = ref([])
+const categories = ref([])
+const tags = ref([])
 const users = ref([])
 const loading = ref(true)
+const categoriesLoading = ref(false)
+const tagsLoading = ref(false)
 const usersLoading = ref(false)
 const error = ref(null)
-const usersError = ref(null)
 const user = ref(null)
 const showCreateUserModal = ref(false)
-const showCreateRoleModal = ref(false)
-const showEditRoleModal = ref(false)
+const showCategoryModal = ref(false)
+const showTagModal = ref(false)
 const creatingUser = ref(false)
-const savingRole = ref(false)
-const rolesLoading = ref(false)
-const rolesError = ref(null)
+const savingCategory = ref(false)
+const savingTag = ref(false)
+const editingCategory = ref(null)
+const editingTag = ref(null)
+
 const newUser = ref({
   username: '',
   password: '',
   is_superuser: false
 })
 
-// 角色数据
-const roles = ref([
-  { id: 1, name: '超级管理员', key: 'superuser', icon: '🔐', description: '拥有系统的所有权限', is_system: true },
-  { id: 2, name: '普通用户', key: 'user', icon: '👤', description: '只能管理自己的文章', is_system: true }
-])
-
-const currentRole = ref({
-  id: null,
+const categoryForm = ref({
   name: '',
-  key: '',
-  icon: '👤',
-  description: '',
-  is_system: false
+  description: ''
+})
+
+const tagForm = ref({
+  name: ''
 })
 
 const formatDate = (dateString) => {
@@ -341,17 +363,10 @@ const formatDate = (dateString) => {
   })
 }
 
-// 获取作者名称
 const getAuthorName = (authorId) => {
   if (!authorId) return '未知'
   const author = users.value.find(u => u.id === authorId)
   return author ? author.username : `用户#${authorId}`
-}
-
-// 解析标签字符串为数组
-const parseTags = (tagsStr) => {
-  if (!tagsStr) return []
-  return tagsStr.split(',').filter(tag => tag.trim())
 }
 
 const loadPosts = async () => {
@@ -368,22 +383,39 @@ const loadPosts = async () => {
   }
 }
 
+const loadCategories = async () => {
+  try {
+    categoriesLoading.value = true
+    const response = await categoryApi.getCategories()
+    categories.value = response.data
+  } catch (err) {
+    console.error('加载分类失败', err)
+  } finally {
+    categoriesLoading.value = false
+  }
+}
+
+const loadTags = async () => {
+  try {
+    tagsLoading.value = true
+    const response = await tagApi.getTags()
+    tags.value = response.data
+  } catch (err) {
+    console.error('加载标签失败', err)
+  } finally {
+    tagsLoading.value = false
+  }
+}
+
 const loadUsers = async () => {
   if (!user.value?.is_superuser) return
   
   try {
     usersLoading.value = true
-    usersError.value = null
-    // 这里需要添加获取用户列表的 API
-    // const response = await userApi.getUsers()
-    // users.value = response.data
-    // 临时使用本地数据演示
     users.value = [
-      { id: 1, username: 'admin', is_superuser: true, is_active: true, created_at: new Date().toISOString() },
-      { id: 2, username: 'user1', is_superuser: false, is_active: true, created_at: new Date().toISOString() }
+      { id: 1, username: 'admin', is_superuser: true, is_active: true, created_at: new Date().toISOString() }
     ]
   } catch (err) {
-    usersError.value = '加载用户列表失败'
     console.error(err)
   } finally {
     usersLoading.value = false
@@ -407,7 +439,6 @@ const handleDelete = async (id) => {
   }
 }
 
-// 隐藏/显示文章（仅超级管理员可操作他人文章）
 const handleToggleHidden = async (post) => {
   const action = post.is_hidden ? '显示' : '隐藏'
   if (!confirm(`确定要${action}这篇文章吗？`)) return
@@ -417,11 +448,7 @@ const handleToggleHidden = async (post) => {
     await loadPosts()
     alert(`${action}成功`)
   } catch (err) {
-    if (err.response?.status === 403) {
-      alert('权限不足，仅超级管理员可操作')
-    } else {
-      alert('操作失败')
-    }
+    alert('操作失败')
     console.error(err)
   }
 }
@@ -429,8 +456,6 @@ const handleToggleHidden = async (post) => {
 const handleCreateUser = async () => {
   try {
     creatingUser.value = true
-    // 这里需要添加创建用户的 API
-    // await userApi.createUser(newUser.value)
     alert('用户创建成功')
     showCreateUserModal.value = false
     newUser.value = { username: '', password: '', is_superuser: false }
@@ -443,91 +468,80 @@ const handleCreateUser = async () => {
   }
 }
 
-// 获取角色用户数量
-const getRoleUserCount = (roleKey) => {
-  if (roleKey === 'superuser') {
-    return users.value.filter(u => u.is_superuser).length
-  }
-  return users.value.filter(u => !u.is_superuser).length
+const openCategoryModal = (cat = null) => {
+  editingCategory.value = cat
+  categoryForm.value = cat ? { name: cat.name, description: cat.description || '' } : { name: '', description: '' }
+  showCategoryModal.value = true
 }
 
-// 打开创建角色弹窗
-const openCreateRoleModal = () => {
-  currentRole.value = {
-    id: null,
-    name: '',
-    key: '',
-    icon: '👤',
-    description: '',
-    is_system: false
-  }
-  showCreateRoleModal.value = true
-}
-
-// 打开编辑角色弹窗
-const openEditRoleModal = (role) => {
-  currentRole.value = { ...role }
-  showEditRoleModal.value = true
-}
-
-// 保存角色（创建或编辑）
-const handleSaveRole = async () => {
-  if (!currentRole.value.name || !currentRole.value.key) {
-    alert('请填写角色名称和标识')
-    return
-  }
-  
+const handleSaveCategory = async () => {
   try {
-    savingRole.value = true
-    
-    if (currentRole.value.id) {
-      // 编辑角色
-      const index = roles.value.findIndex(r => r.id === currentRole.value.id)
-      if (index !== -1) {
-        roles.value[index] = { ...currentRole.value }
-      }
-      alert('角色更新成功')
-      showEditRoleModal.value = false
+    savingCategory.value = true
+    if (editingCategory.value) {
+      await categoryApi.updateCategory(editingCategory.value.id, categoryForm.value)
+      alert('分类更新成功')
     } else {
-      // 创建角色
-      const newId = Math.max(...roles.value.map(r => r.id), 0) + 1
-      roles.value.push({
-        ...currentRole.value,
-        id: newId,
-        is_system: false
-      })
-      alert('角色创建成功')
-      showCreateRoleModal.value = false
+      await categoryApi.createCategory(categoryForm.value)
+      alert('分类创建成功')
     }
+    showCategoryModal.value = false
+    await loadCategories()
   } catch (err) {
-    alert('保存失败')
+    alert(err.response?.data?.detail || '操作失败')
     console.error(err)
   } finally {
-    savingRole.value = false
+    savingCategory.value = false
   }
 }
 
-// 删除角色
-const handleDeleteRole = async (role) => {
-  if (role.is_system) {
-    alert('系统角色不能删除')
-    return
-  }
-  
-  if (!confirm(`确定要删除角色 "${role.name}" 吗？`)) return
+const handleDeleteCategory = async (id) => {
+  if (!confirm('确定要删除这个分类吗？')) return
   
   try {
-    // 检查是否有用户使用该角色
-    const userCount = getRoleUserCount(role.key)
-    if (userCount > 0) {
-      alert(`该角色下有 ${userCount} 个用户，不能删除`)
-      return
-    }
-    
-    roles.value = roles.value.filter(r => r.id !== role.id)
-    alert('角色删除成功')
+    await categoryApi.deleteCategory(id)
+    alert('分类删除成功')
+    await loadCategories()
   } catch (err) {
-    alert('删除失败')
+    alert(err.response?.data?.detail || '删除失败')
+    console.error(err)
+  }
+}
+
+const openTagModal = (tag = null) => {
+  editingTag.value = tag
+  tagForm.value = tag ? { name: tag.name } : { name: '' }
+  showTagModal.value = true
+}
+
+const handleSaveTag = async () => {
+  try {
+    savingTag.value = true
+    if (editingTag.value) {
+      await tagApi.updateTag(editingTag.value.id, tagForm.value)
+      alert('标签更新成功')
+    } else {
+      await tagApi.createTag(tagForm.value)
+      alert('标签创建成功')
+    }
+    showTagModal.value = false
+    await loadTags()
+  } catch (err) {
+    alert(err.response?.data?.detail || '操作失败')
+    console.error(err)
+  } finally {
+    savingTag.value = false
+  }
+}
+
+const handleDeleteTag = async (id) => {
+  if (!confirm('确定要删除这个标签吗？')) return
+  
+  try {
+    await tagApi.deleteTag(id)
+    alert('标签删除成功')
+    await loadTags()
+  } catch (err) {
+    alert(err.response?.data?.detail || '删除失败')
     console.error(err)
   }
 }
@@ -546,6 +560,8 @@ onMounted(() => {
     user.value = JSON.parse(userStr)
   }
   loadPosts()
+  loadCategories()
+  loadTags()
   loadUsers()
 })
 </script>
@@ -556,7 +572,6 @@ onMounted(() => {
   min-height: calc(100vh - 140px);
 }
 
-/* 侧边栏 */
 .sidebar {
   width: 250px;
   background: #2c3e50;
@@ -629,6 +644,7 @@ onMounted(() => {
 .sidebar-footer {
   padding: 20px;
   border-top: 1px solid rgba(255,255,255,0.1);
+  margin-top: auto;
 }
 
 .sidebar-footer .user-info {
@@ -665,7 +681,6 @@ onMounted(() => {
   border-color: #e74c3c;
 }
 
-/* 主内容区 */
 .main-content {
   flex: 1;
   margin-left: 250px;
@@ -696,7 +711,6 @@ onMounted(() => {
   margin: 0;
 }
 
-/* 按钮样式 */
 .btn {
   padding: 10px 20px;
   border-radius: 6px;
@@ -744,8 +758,17 @@ onMounted(() => {
   color: white;
 }
 
-/* 表格样式 */
-.posts-table, .users-table {
+.btn-success {
+  background: #27ae60;
+  color: white;
+}
+
+.btn-warning {
+  background: #f39c12;
+  color: white;
+}
+
+.posts-table, .data-table {
   overflow-x: auto;
 }
 
@@ -780,20 +803,33 @@ tr:hover {
   white-space: nowrap;
 }
 
-.summary-cell {
-  color: #666;
-  max-width: 250px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .actions {
   display: flex;
   gap: 8px;
 }
 
-/* 角色和状态标签 */
+.category-tag {
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.post-tag {
+  padding: 2px 8px;
+  background: #f5f5f5;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  color: #666;
+}
+
 .role-badge {
   padding: 4px 12px;
   border-radius: 12px;
@@ -827,7 +863,22 @@ tr:hover {
   color: white;
 }
 
-/* 加载和空状态 */
+.status-tag {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+}
+
+.status-tag.visible {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-tag.hidden {
+  background: #f8d7da;
+  color: #721c24;
+}
+
 .loading, .error, .no-posts, .no-data {
   text-align: center;
   padding: 60px 20px;
@@ -840,7 +891,6 @@ tr:hover {
   border-radius: 8px;
 }
 
-/* 弹窗 */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -880,7 +930,8 @@ tr:hover {
 }
 
 .form-group input[type="text"],
-.form-group input[type="password"] {
+.form-group input[type="password"],
+.form-group textarea {
   width: 100%;
   padding: 10px 14px;
   border: 1px solid #ddd;
@@ -890,6 +941,14 @@ tr:hover {
 
 .form-group input[type="checkbox"] {
   margin-right: 8px;
+}
+
+.form-group textarea {
+  resize: vertical;
+}
+
+.required {
+  color: #e74c3c;
 }
 
 .modal-actions {
@@ -902,268 +961,16 @@ tr:hover {
   flex: 1;
 }
 
-/* 角色管理样式 */
-.roles-info {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-  gap: 24px;
-  margin-top: 20px;
-}
-
-.info-card {
-  background: #f8f9fa;
-  border-radius: 12px;
-  padding: 24px;
-  border: 1px solid #e9ecef;
-}
-
-.role-header {
-  display: flex;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.role-icon {
-  font-size: 2rem;
-  margin-right: 12px;
-}
-
-.role-title {
-  flex: 1;
-}
-
-.role-title h3 {
-  margin: 0 0 4px 0;
-  color: #2c3e50;
-  font-size: 1.1rem;
-}
-
-.role-key {
-  display: inline-block;
-  background: #e9ecef;
-  color: #6c757d;
-  padding: 2px 10px;
-  border-radius: 4px;
-  font-size: 0.8rem;
-  font-family: monospace;
-}
-
-.info-card p {
-  color: #666;
-  margin-bottom: 12px;
-}
-
-.info-card ul {
-  margin: 0 0 20px 0;
-  padding-left: 20px;
-  color: #555;
-}
-
-.info-card li {
-  margin-bottom: 6px;
-}
-
-.role-users {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding-top: 16px;
-  border-top: 1px solid #e9ecef;
-}
-
-.role-users .label {
-  color: #888;
-  font-size: 0.9rem;
-}
-
-.user-tag {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 4px 12px;
-  border-radius: 16px;
-  font-size: 0.85rem;
-}
-
-/* 角色管理表格样式 */
-.roles-table {
-  overflow-x: auto;
-}
-
-.role-name-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.role-icon-small {
-  font-size: 1.2rem;
-}
-
-.role-code {
-  background: #f4f4f4;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 0.85rem;
-  color: #666;
-}
-
-.user-count {
-  background: #e3f2fd;
-  color: #1976d2;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 0.85rem;
-  font-weight: 500;
-}
-
-/* 表单样式 */
-.form-help {
-  display: block;
-  margin-top: 4px;
-  color: #888;
-  font-size: 0.8rem;
-}
-
-.required {
-  color: #e74c3c;
-}
-
-.icon-select {
-  width: 100%;
-  padding: 10px 14px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 1rem;
-  background: white;
-}
-
-textarea {
-  width: 100%;
-  padding: 10px 14px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 1rem;
-  resize: vertical;
-  font-family: inherit;
-}
-
-.form-notice {
-  background: #fff3cd;
-  border: 1px solid #ffeaa7;
-  padding: 10px 14px;
-  border-radius: 6px;
-  margin-bottom: 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #856404;
-}
-
-.notice-icon {
-  font-size: 1.2rem;
-}
-
-/* 文章管理样式 */
-.posts-table tr.is-hidden {
-  background: #f5f5f5;
-  opacity: 0.7;
-}
-
-.posts-table tr.is-hidden .title-cell,
-.posts-table tr.is-hidden .summary-cell {
-  text-decoration: line-through;
-  color: #999;
-}
-
 .my-post-badge {
-  display: inline-block;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #667eea;
   color: white;
   padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 0.7rem;
-  margin-left: 8px;
-  font-weight: 500;
-}
-
-.status-tag {
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 0.8rem;
-  font-weight: 500;
-}
-
-.status-tag.visible {
-  background: #e8f5e9;
-  color: #2e7d32;
-}
-
-.status-tag.hidden {
-  background: #ffebee;
-  color: #c62828;
-}
-
-.btn-success {
-  background: #2ecc71;
-  color: white;
-}
-
-.btn-success:hover {
-  background: #27ae60;
-}
-
-.btn-warning {
-  background: #f39c12;
-  color: white;
-}
-
-.btn-warning:hover {
-  background: #e67e22;
-}
-
-/* 分类标签样式 */
-.category-tag {
-  padding: 4px 12px;
-  border-radius: 4px;
-  font-size: 0.8rem;
-  font-weight: 500;
-}
-
-.cat-前端 {
-  background: #e3f2fd;
-  color: #1976d2;
-}
-
-.cat-后端 {
-  background: #f3e5f5;
-  color: #7b1fa2;
-}
-
-.cat-数据库 {
-  background: #e8f5e9;
-  color: #388e3c;
-}
-
-.cat-其它 {
-  background: #fff3e0;
-  color: #f57c00;
-}
-
-/* 文章标签样式 */
-.tags-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.post-tag {
-  padding: 2px 8px;
-  background: #f5f5f5;
-  border: 1px solid #e0e0e0;
   border-radius: 12px;
   font-size: 0.75rem;
-  color: #666;
+  margin-left: 8px;
+}
+
+.is-hidden {
+  opacity: 0.6;
 }
 </style>

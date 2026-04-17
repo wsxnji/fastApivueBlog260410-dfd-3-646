@@ -1,25 +1,37 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
+from typing import Optional
 from database import get_db
-from crud import get_post, get_posts, create_post, update_post, delete_post, create_user, toggle_post_hidden
-from schemas import Post, PostCreate, PostUpdate, PostPublic, User, UserCreate, Token
+import crud
+from schemas import (
+    Post, PostCreate, PostUpdate, PostPublic, User, UserCreate, Token,
+    Category, CategoryCreate, CategoryUpdate,
+    Tag, TagCreate, TagUpdate,
+    Comment, CommentCreate, CommentUpdate,
+    Favorite
+)
 from auth import (
     authenticate_user,
     create_access_token,
     get_current_active_user,
+    get_current_user_optional,
     get_current_superuser,
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
+import os
+import uuid
+from pathlib import Path
 
 router = APIRouter()
 
+UPLOAD_DIR = Path(__file__).parent / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
 
-# ========== 认证相关 ==========
+
 @router.post("/auth/login", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    """用户登录"""
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(
@@ -36,11 +48,9 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 
 @router.get("/auth/me", response_model=User)
 def read_users_me(current_user: User = Depends(get_current_active_user)):
-    """获取当前用户信息"""
     return current_user
 
 
-# ========== 用户管理（仅超级管理员） ==========
 @router.post("/users", response_model=User)
 def create_new_user(
     user: UserCreate,
@@ -48,18 +58,12 @@ def create_new_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_superuser)
 ):
-    """创建新用户（仅超级管理员）"""
-    from crud import get_user_by_username
-    db_user = get_user_by_username(db, username=user.username)
+    db_user = crud.get_user_by_username(db, username=user.username)
     if db_user:
-        raise HTTPException(
-            status_code=400,
-            detail="用户名已存在"
-        )
-    return create_user(db=db, user=user, is_superuser=is_superuser)
+        raise HTTPException(status_code=400, detail="用户名已存在")
+    return crud.create_user(db=db, user=user, is_superuser=is_superuser)
 
 
-# ========== 文章相关 ==========
 @router.get("/posts", response_model=list[Post])
 def read_posts(
     skip: int = 0,
@@ -67,76 +71,86 @@ def read_posts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """获取文章列表（普通用户只能看到自己的文章，超级管理员可以看到所有文章）"""
-    from crud import get_posts_by_author
-    
     if current_user.is_superuser:
-        # 超级管理员可以看到所有文章
-        posts = get_posts(db, skip=skip, limit=limit)
+        posts = crud.get_posts(db, skip=skip, limit=limit)
     else:
-        # 普通用户只能看到自己的文章
-        posts = get_posts_by_author(db, author_id=current_user.id, skip=skip, limit=limit)
-    
+        posts = crud.get_posts_by_author(db, author_id=current_user.id, skip=skip, limit=limit)
     return posts
 
 
 @router.get("/posts/public", response_model=list[PostPublic])
-def read_public_posts(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
-    """获取公开文章列表（前台展示，所有人可见）"""
-    from crud import get_user
-    posts = get_posts(db, skip=skip, limit=limit)
-    
-    # 为每篇文章添加作者名称
+def read_public_posts(
+    skip: int = 0,
+    limit: int = 10,
+    category_id: Optional[int] = None,
+    tag_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    posts = crud.get_posts(db, skip=skip, limit=limit, category_id=category_id, tag_id=tag_id)
     result = []
     for post in posts:
+        author = crud.get_user(db, post.author_id) if post.author_id else None
+        like_count = crud.get_like_count(db, post.id)
+        comment_count = crud.get_comment_count(db, post.id)
+        
         post_dict = {
             "id": post.id,
             "title": post.title,
             "content": post.content,
             "summary": post.summary,
-            "category": post.category,
-            "tags": post.tags,
+            "cover_image": post.cover_image,
             "created_at": post.created_at,
             "updated_at": post.updated_at,
             "author_id": post.author_id,
-            "author_name": None
+            "author_name": author.username if author else None,
+            "category": post.category,
+            "tags": post.tags,
+            "like_count": like_count,
+            "comment_count": comment_count,
+            "is_liked": False,
+            "is_favorited": False
         }
-        if post.author_id:
-            author = get_user(db, post.author_id)
-            if author:
-                post_dict["author_name"] = author.username
         result.append(post_dict)
-    
     return result
 
 
 @router.get("/posts/{post_id}", response_model=PostPublic)
-def read_post(post_id: int, db: Session = Depends(get_db)):
-    """获取单篇文章（公开）"""
-    from crud import get_user
-    db_post = get_post(db, post_id=post_id)
+def read_post(
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    db_post = crud.get_post(db, post_id=post_id)
     if db_post is None:
         raise HTTPException(status_code=404, detail="文章不存在")
     
-    # 构建返回数据，包含作者名称
-    post_dict = {
+    author = crud.get_user(db, db_post.author_id) if db_post.author_id else None
+    like_count = crud.get_like_count(db, db_post.id)
+    comment_count = crud.get_comment_count(db, db_post.id)
+    
+    is_liked = False
+    is_favorited = False
+    if current_user:
+        is_liked = crud.get_like(db, db_post.id, current_user.id) is not None
+        is_favorited = crud.get_favorite(db, db_post.id, current_user.id) is not None
+    
+    return {
         "id": db_post.id,
         "title": db_post.title,
         "content": db_post.content,
         "summary": db_post.summary,
-        "category": db_post.category,
-        "tags": db_post.tags,
+        "cover_image": db_post.cover_image,
         "created_at": db_post.created_at,
         "updated_at": db_post.updated_at,
         "author_id": db_post.author_id,
-        "author_name": None
+        "author_name": author.username if author else None,
+        "category": db_post.category,
+        "tags": db_post.tags,
+        "like_count": like_count,
+        "comment_count": comment_count,
+        "is_liked": is_liked,
+        "is_favorited": is_favorited
     }
-    if db_post.author_id:
-        author = get_user(db, db_post.author_id)
-        if author:
-            post_dict["author_name"] = author.username
-    
-    return post_dict
 
 
 @router.post("/posts", response_model=Post)
@@ -145,8 +159,7 @@ def create_new_post(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """创建文章（需要登录）"""
-    return create_post(db=db, post=post, author_id=current_user.id)
+    return crud.create_post(db=db, post=post, author_id=current_user.id)
 
 
 @router.put("/posts/{post_id}", response_model=Post)
@@ -156,21 +169,17 @@ def update_existing_post(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """更新文章（需要登录，超级管理员可更新所有文章，普通用户只能更新自己的文章）"""
-    db_post = get_post(db, post_id=post_id)
+    db_post = crud.get_post(db, post_id=post_id)
     if db_post is None:
         raise HTTPException(status_code=404, detail="文章不存在")
     
-    # 检查权限：普通用户只能更新自己的文章
-    if not current_user.is_superuser:
-        if db_post.author_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="只能更新自己的文章"
-            )
+    if not current_user.is_superuser and db_post.author_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="只能更新自己的文章"
+        )
     
-    db_post = update_post(db=db, post_id=post_id, post=post)
-    return db_post
+    return crud.update_post(db=db, post_id=post_id, post=post)
 
 
 @router.delete("/posts/{post_id}")
@@ -179,20 +188,17 @@ def delete_existing_post(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """删除文章（需要登录，超级管理员可删除所有文章，普通用户只能删除自己的文章）"""
-    db_post = get_post(db, post_id=post_id)
+    db_post = crud.get_post(db, post_id=post_id)
     if db_post is None:
         raise HTTPException(status_code=404, detail="文章不存在")
     
-    # 检查权限：普通用户只能删除自己的文章
-    if not current_user.is_superuser:
-        if db_post.author_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="只能删除自己的文章"
-            )
+    if not current_user.is_superuser and db_post.author_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="只能删除自己的文章"
+        )
     
-    success = delete_post(db=db, post_id=post_id)
+    crud.delete_post(db=db, post_id=post_id)
     return {"message": "文章删除成功"}
 
 
@@ -203,11 +209,240 @@ def toggle_post_visibility(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_superuser)
 ):
-    """隐藏/显示文章（仅超级管理员）"""
-    db_post = get_post(db, post_id=post_id)
+    db_post = crud.get_post(db, post_id=post_id)
     if db_post is None:
         raise HTTPException(status_code=404, detail="文章不存在")
     
-    db_post = toggle_post_hidden(db=db, post_id=post_id, is_hidden=is_hidden)
+    db_post = crud.toggle_post_hidden(db=db, post_id=post_id, is_hidden=is_hidden)
     action = "隐藏" if is_hidden else "显示"
     return {"message": f"文章已{action}", "post": db_post}
+
+
+@router.get("/categories", response_model=list[Category])
+def read_categories(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    return crud.get_categories(db, skip=skip, limit=limit)
+
+
+@router.post("/categories", response_model=Category)
+def create_category(
+    category: CategoryCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_superuser)
+):
+    db_category = crud.get_category_by_name(db, name=category.name)
+    if db_category:
+        raise HTTPException(status_code=400, detail="分类名称已存在")
+    return crud.create_category(db=db, category=category)
+
+
+@router.put("/categories/{category_id}", response_model=Category)
+def update_category(
+    category_id: int,
+    category: CategoryUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_superuser)
+):
+    db_category = crud.get_category(db, category_id)
+    if not db_category:
+        raise HTTPException(status_code=404, detail="分类不存在")
+    return crud.update_category(db=db, category_id=category_id, category=category)
+
+
+@router.delete("/categories/{category_id}")
+def delete_category(
+    category_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_superuser)
+):
+    success = crud.delete_category(db=db, category_id=category_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="分类不存在")
+    return {"message": "分类删除成功"}
+
+
+@router.get("/tags", response_model=list[Tag])
+def read_tags(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    return crud.get_tags(db, skip=skip, limit=limit)
+
+
+@router.post("/tags", response_model=Tag)
+def create_tag(
+    tag: TagCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_superuser)
+):
+    db_tag = crud.get_tag_by_name(db, name=tag.name)
+    if db_tag:
+        raise HTTPException(status_code=400, detail="标签名称已存在")
+    return crud.create_tag(db=db, tag=tag)
+
+
+@router.put("/tags/{tag_id}", response_model=Tag)
+def update_tag(
+    tag_id: int,
+    tag: TagUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_superuser)
+):
+    db_tag = crud.get_tag(db, tag_id)
+    if not db_tag:
+        raise HTTPException(status_code=404, detail="标签不存在")
+    return crud.update_tag(db=db, tag_id=tag_id, tag=tag)
+
+
+@router.delete("/tags/{tag_id}")
+def delete_tag(
+    tag_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_superuser)
+):
+    success = crud.delete_tag(db=db, tag_id=tag_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="标签不存在")
+    return {"message": "标签删除成功"}
+
+
+@router.get("/posts/{post_id}/comments", response_model=list[Comment])
+def read_comments(
+    post_id: int,
+    db: Session = Depends(get_db)
+):
+    return crud.get_comments_by_post(db, post_id=post_id)
+
+
+@router.post("/posts/{post_id}/comments", response_model=Comment)
+def create_comment(
+    post_id: int,
+    comment: CommentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    db_post = crud.get_post(db, post_id)
+    if not db_post:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    
+    if db_post.author_id == current_user.id and not comment.parent_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="作者不能评论自己的文章，但可以回复他人的评论"
+        )
+    
+    if comment.parent_id:
+        parent_comment = crud.get_comment(db, comment.parent_id)
+        if not parent_comment or parent_comment.post_id != post_id:
+            raise HTTPException(status_code=400, detail="回复的评论不存在")
+    
+    return crud.create_comment(db=db, comment=comment, post_id=post_id, author_id=current_user.id)
+
+
+@router.put("/comments/{comment_id}", response_model=Comment)
+def update_comment(
+    comment_id: int,
+    comment: CommentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    db_comment = crud.update_comment(db=db, comment_id=comment_id, comment=comment, author_id=current_user.id)
+    if not db_comment:
+        raise HTTPException(status_code=404, detail="评论不存在或无权修改")
+    return db_comment
+
+
+@router.delete("/comments/{comment_id}")
+def delete_comment(
+    comment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    success = crud.delete_comment(db=db, comment_id=comment_id, author_id=current_user.id)
+    if not success:
+        raise HTTPException(status_code=404, detail="评论不存在或无权删除")
+    return {"message": "评论删除成功"}
+
+
+@router.post("/posts/{post_id}/like")
+def toggle_like(
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    db_post = crud.get_post(db, post_id)
+    if not db_post:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    
+    if db_post.author_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="不能点赞自己的文章"
+        )
+    
+    existing_like = crud.get_like(db, post_id, current_user.id)
+    if existing_like:
+        crud.delete_like(db, post_id, current_user.id)
+        return {"message": "取消点赞", "liked": False}
+    else:
+        crud.create_like(db, post_id, current_user.id)
+        return {"message": "点赞成功", "liked": True}
+
+
+@router.post("/posts/{post_id}/favorite")
+def toggle_favorite(
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    db_post = crud.get_post(db, post_id)
+    if not db_post:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    
+    existing_favorite = crud.get_favorite(db, post_id, current_user.id)
+    if existing_favorite:
+        crud.delete_favorite(db, post_id, current_user.id)
+        return {"message": "取消收藏", "favorited": False}
+    else:
+        crud.create_favorite(db, post_id, current_user.id)
+        return {"message": "收藏成功", "favorited": True}
+
+
+@router.get("/favorites", response_model=list[Favorite])
+def read_favorites(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    return crud.get_favorites_by_user(db, user_id=current_user.id, skip=skip, limit=limit)
+
+
+@router.post("/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user)
+):
+    allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail="只支持 JPG、PNG、GIF、WEBP 格式的图片"
+        )
+    
+    file_ext = os.path.splitext(file.filename)[1]
+    filename = f"{uuid.uuid4()}{file_ext}"
+    file_path = UPLOAD_DIR / filename
+    
+    content = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
+    
+    return {
+        "url": f"/uploads/{filename}",
+        "filename": filename
+    }

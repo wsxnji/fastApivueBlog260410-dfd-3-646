@@ -6,6 +6,7 @@
         <div class="nav-links">
           <router-link to="/">首页</router-link>
           <template v-if="isLoggedIn">
+            <router-link to="/favorites">我的收藏</router-link>
             <router-link to="/admin">管理后台</router-link>
             <div class="user-info">
               <span class="user-name">👤 {{ currentUser?.username }}</span>
@@ -53,7 +54,6 @@ const logout = () => {
   }
 }
 
-// 监听路由变化，更新用户信息
 watch(() => route.path, () => {
   const userStr = localStorage.getItem('user')
   if (userStr) {
@@ -136,7 +136,6 @@ body {
   color: white;
 }
 
-/* 用户信息样式 */
 .user-info {
   display: flex;
   align-items: center;

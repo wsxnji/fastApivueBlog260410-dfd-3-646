@@ -92,6 +92,24 @@ async def get_current_active_user(
     return current_user
 
 
+async def get_current_user_optional(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+) -> Optional[User]:
+    """获取当前用户（可选，不强制登录）"""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            return None
+        user = get_user(db, username=username)
+        if user and user.is_active:
+            return user
+        return None
+    except:
+        return None
+
+
 async def get_current_superuser(
     current_user: User = Depends(get_current_active_user)
 ) -> User:
