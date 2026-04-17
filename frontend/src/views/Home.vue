@@ -4,6 +4,23 @@
       <h1 class="page-title">📝 最新文章</h1>
     </div>
     
+    <div class="filter-section">
+      <div class="filter-group">
+        <label>分类筛选：</label>
+        <select v-model="selectedCategory" @change="loadPosts" class="filter-select">
+          <option :value="null">全部分类</option>
+          <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>标签筛选：</label>
+        <select v-model="selectedTag" @change="loadPosts" class="filter-select">
+          <option :value="null">全部标签</option>
+          <option v-for="tag in tags" :key="tag.id" :value="tag.id">{{ tag.name }}</option>
+        </select>
+      </div>
+    </div>
+    
     <div v-if="loading" class="loading">
       <div class="spinner"></div>
       <p>加载中...</p>
@@ -11,16 +28,23 @@
     <div v-else-if="error" class="error">{{ error }}</div>
     <div v-else class="posts-grid">
       <article v-for="post in posts" :key="post.id" class="post-card">
+        <div v-if="post.cover_image" class="post-cover">
+          <img :src="post.cover_image" :alt="post.title" />
+        </div>
         <div class="post-header">
-          <span :class="['category-badge', 'cat-' + post.category]">{{ post.category || '其它' }}</span>
+          <span v-if="post.category" :class="['category-badge', 'cat-' + post.category.id]">{{ post.category.name }}</span>
           <div class="post-tags">
-            <span v-for="tag in parseTags(post.tags)" :key="tag" class="tag-item">{{ tag }}</span>
+            <span v-for="tag in post.tags" :key="tag.id" class="tag-item">{{ tag.name }}</span>
           </div>
         </div>
         <h2 class="post-title">
           <router-link :to="`/post/${post.id}`">{{ post.title }}</router-link>
         </h2>
         <p class="post-summary">{{ post.summary || truncateContent(post.content) }}</p>
+        <div class="post-stats">
+          <span class="stat-item">❤️ {{ post.like_count }}</span>
+          <span class="stat-item">💬 {{ post.comment_count }}</span>
+        </div>
         <div class="post-meta">
           <div class="meta-left">
             <span class="post-author">👤 {{ post.author_name || '未知作者' }}</span>
@@ -38,24 +62,25 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { postApi } from '../api'
+import { ref, onMounted, computed } from 'vue'
+import { postApi, categoryApi, tagApi } from '../api'
 
 const posts = ref([])
+const categories = ref([])
+const tags = ref([])
 const loading = ref(true)
 const error = ref(null)
+const selectedCategory = ref(null)
+const selectedTag = ref(null)
+
+const isLoggedIn = computed(() => {
+  return !!localStorage.getItem('token')
+})
 
 const truncateContent = (content) => {
   if (!content) return ''
-  // 移除 Markdown 标记后截取
   const plainText = content.replace(/[#*`_[\]!()]/g, '')
   return plainText.length > 150 ? plainText.substring(0, 150) + '...' : plainText
-}
-
-// 解析标签字符串为数组
-const parseTags = (tagsStr) => {
-  if (!tagsStr) return []
-  return tagsStr.split(',').filter(tag => tag.trim())
 }
 
 const formatDate = (dateString) => {
@@ -67,11 +92,36 @@ const formatDate = (dateString) => {
   })
 }
 
+const loadCategories = async () => {
+  try {
+    const response = await categoryApi.getCategories()
+    categories.value = response.data
+  } catch (err) {
+    console.error('加载分类失败', err)
+  }
+}
+
+const loadTags = async () => {
+  try {
+    const response = await tagApi.getTags()
+    tags.value = response.data
+  } catch (err) {
+    console.error('加载标签失败', err)
+  }
+}
+
 const loadPosts = async () => {
   try {
     loading.value = true
     error.value = null
-    const response = await postApi.getPublicPosts({ limit: 20 })
+    const params = { limit: 20 }
+    if (selectedCategory.value) {
+      params.category_id = selectedCategory.value
+    }
+    if (selectedTag.value) {
+      params.tag_id = selectedTag.value
+    }
+    const response = await postApi.getPublicPosts(params)
     posts.value = response.data
   } catch (err) {
     error.value = '加载文章失败，请稍后重试'
@@ -82,6 +132,8 @@ const loadPosts = async () => {
 }
 
 onMounted(() => {
+  loadCategories()
+  loadTags()
   loadPosts()
 })
 </script>
@@ -96,7 +148,7 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid #eee;
 }
@@ -105,6 +157,39 @@ onMounted(() => {
   font-size: 2rem;
   color: #2c3e50;
   margin: 0;
+}
+
+.filter-section {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.filter-group label {
+  font-weight: 500;
+  color: #555;
+}
+
+.filter-select {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  background: white;
+  cursor: pointer;
+  min-width: 150px;
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: #667eea;
 }
 
 .btn-primary {
@@ -120,11 +205,11 @@ onMounted(() => {
 
 .post-card {
   background: #fff;
-  padding: 2rem;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   transition: transform 0.3s, box-shadow 0.3s;
   border: 1px solid #f0f0f0;
+  overflow: hidden;
 }
 
 .post-card:hover {
@@ -132,11 +217,23 @@ onMounted(() => {
   box-shadow: 0 8px 24px rgba(0,0,0,0.12);
 }
 
+.post-cover {
+  width: 100%;
+  height: 200px;
+  overflow: hidden;
+}
+
+.post-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .post-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  padding: 1rem 1.5rem 0;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
@@ -148,25 +245,10 @@ onMounted(() => {
   font-weight: 600;
 }
 
-.cat-前端 {
-  background: #e3f2fd;
-  color: #1976d2;
-}
-
-.cat-后端 {
-  background: #f3e5f5;
-  color: #7b1fa2;
-}
-
-.cat-数据库 {
-  background: #e8f5e9;
-  color: #388e3c;
-}
-
-.cat-其它 {
-  background: #fff3e0;
-  color: #f57c00;
-}
+.cat-1 { background: #e3f2fd; color: #1976d2; }
+.cat-2 { background: #f3e5f5; color: #7b1fa2; }
+.cat-3 { background: #e8f5e9; color: #388e3c; }
+.cat-4 { background: #fff3e0; color: #f57c00; }
 
 .post-tags {
   display: flex;
@@ -185,7 +267,7 @@ onMounted(() => {
 
 .post-title {
   font-size: 1.5rem;
-  margin-bottom: 1rem;
+  margin: 1rem 1.5rem;
   line-height: 1.4;
 }
 
@@ -202,8 +284,20 @@ onMounted(() => {
 .post-summary {
   color: #666;
   line-height: 1.7;
-  margin-bottom: 1.5rem;
+  margin: 0 1.5rem 1rem;
   font-size: 1rem;
+}
+
+.post-stats {
+  display: flex;
+  gap: 1rem;
+  padding: 0 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.stat-item {
+  font-size: 0.9rem;
+  color: #888;
 }
 
 .post-meta {
@@ -212,6 +306,9 @@ onMounted(() => {
   align-items: center;
   color: #888;
   font-size: 0.9rem;
+  padding: 1rem 1.5rem;
+  background: #f8f9fa;
+  border-top: 1px solid #eee;
 }
 
 .meta-left {

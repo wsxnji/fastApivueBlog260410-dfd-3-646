@@ -34,6 +34,12 @@ const routes = [
     component: () => import('../views/EditPost.vue'),
     meta: { requiresAuth: true },
   },
+  {
+    path: '/favorites',
+    name: 'Favorites',
+    component: () => import('../views/Favorites.vue'),
+    meta: { requiresAuth: true },
+  },
 ]
 
 const router = createRouter({
@@ -41,7 +47,6 @@ const router = createRouter({
   routes,
 })
 
-// 路由守卫
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token')
 
