@@ -18,27 +18,40 @@
           />
         </div>
         
+        <div class="form-group">
+          <label for="cover_image">封面图片 URL（可选）</label>
+          <input
+            id="cover_image"
+            v-model="form.cover_image"
+            type="url"
+            placeholder="请输入封面图片 URL"
+          />
+          <div v-if="form.cover_image" class="cover-preview">
+            <img :src="form.cover_image" alt="封面预览" @error="handleImageError" />
+          </div>
+        </div>
+        
         <div class="form-row">
           <div class="form-group form-group-half">
             <label for="category">文章分类</label>
-            <select id="category" v-model="form.category" required>
-              <option value="前端">前端</option>
-              <option value="后端">后端</option>
-              <option value="数据库">数据库</option>
-              <option value="其它">其它</option>
+            <select id="category" v-model="form.category_id">
+              <option :value="null">请选择分类</option>
+              <option v-for="cat in categories" :key="cat.id" :value="cat.id">
+                {{ cat.name }}
+              </option>
             </select>
           </div>
           
           <div class="form-group form-group-half">
             <label>文章标签</label>
             <div class="tags-selector">
-              <label v-for="tag in availableTags" :key="tag" class="tag-checkbox">
+              <label v-for="tag in availableTags" :key="tag.id" class="tag-checkbox">
                 <input
                   type="checkbox"
-                  :value="tag"
+                  :value="tag.name"
                   v-model="selectedTags"
                 />
-                <span class="tag-label">{{ tag }}</span>
+                <span class="tag-label">{{ tag.name }}</span>
               </label>
             </div>
           </div>
@@ -71,24 +84,47 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { postApi } from '../api'
+import { postApi, categoryApi, tagApi } from '../api'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
 
 const router = useRouter()
 const submitting = ref(false)
+const categories = ref([])
+const availableTags = ref([])
 const form = ref({
   title: '',
   summary: '',
   content: '',
-  category: '其它',
+  cover_image: '',
+  category_id: null,
   tags: ''
 })
 
-// 可选标签列表
-const availableTags = ['JS', 'Node', 'Java', 'Python', 'Go', 'Vue', 'React']
 const selectedTags = ref([])
+
+const loadCategories = async () => {
+  try {
+    const response = await categoryApi.getCategories()
+    categories.value = response.data
+  } catch (err) {
+    console.error('加载分类失败:', err)
+  }
+}
+
+const loadTags = async () => {
+  try {
+    const response = await tagApi.getTags()
+    availableTags.value = response.data
+  } catch (err) {
+    console.error('加载标签失败:', err)
+  }
+}
+
+const handleImageError = () => {
+  alert('封面图片加载失败，请检查 URL 是否正确')
+}
 
 const handleSubmit = async () => {
   if (!form.value.content.trim()) {
@@ -118,6 +154,11 @@ const handleSubmit = async () => {
     submitting.value = false
   }
 }
+
+onMounted(() => {
+  loadCategories()
+  loadTags()
+})
 </script>
 
 <style scoped>
@@ -173,6 +214,7 @@ label {
 }
 
 input[type="text"],
+input[type="url"],
 textarea,
 select {
   width: 100%;
@@ -186,6 +228,7 @@ select {
 }
 
 input[type="text"]:focus,
+input[type="url"]:focus,
 textarea:focus,
 select:focus {
   outline: none;
@@ -199,12 +242,23 @@ textarea {
 .form-row {
   display: flex;
   gap: 1.5rem;
-  margin-bottom: 1.5rem;
 }
 
 .form-group-half {
   flex: 1;
-  margin-bottom: 0;
+}
+
+.cover-preview {
+  margin-top: 1rem;
+  max-width: 400px;
+}
+
+.cover-preview img {
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
 }
 
 .tags-selector {
@@ -214,34 +268,35 @@ textarea {
   padding: 12px;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
-  background: #fafafa;
+  background: white;
 }
 
 .tag-checkbox {
   display: flex;
   align-items: center;
   cursor: pointer;
-  margin: 0;
+  padding: 6px 12px;
+  background: #f5f5f5;
+  border-radius: 20px;
+  transition: all 0.2s;
 }
 
-.tag-checkbox input[type="checkbox"] {
-  display: none;
+.tag-checkbox:hover {
+  background: #e8e8e8;
+}
+
+.tag-checkbox input {
+  margin-right: 6px;
 }
 
 .tag-label {
-  padding: 6px 14px;
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 20px;
-  font-size: 0.85rem;
-  transition: all 0.3s;
-  font-weight: 500;
+  font-size: 0.9rem;
+  color: #555;
 }
 
-.tag-checkbox input[type="checkbox"]:checked + .tag-label {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border-color: #667eea;
+.tag-checkbox input:checked + .tag-label {
+  color: #667eea;
+  font-weight: 500;
 }
 
 .form-actions {
@@ -256,27 +311,29 @@ textarea {
   padding: 12px 24px;
   border: none;
   border-radius: 8px;
+  font-size: 1rem;
   cursor: pointer;
   text-decoration: none;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.3s;
-  font-size: 1rem;
-  font-weight: 600;
+  font-weight: 500;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .btn-primary {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: #fff;
+  color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
-}
-
-.btn-primary:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
 .btn-secondary {
@@ -285,6 +342,13 @@ textarea {
 }
 
 .btn-secondary:hover {
-  background: #e0e0e0;
+  background: #e8e8e8;
+}
+
+@media (max-width: 768px) {
+  .form-row {
+    flex-direction: column;
+    gap: 0;
+  }
 }
 </style>
