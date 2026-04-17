@@ -6,26 +6,44 @@
         <h2>管理后台</h2>
       </div>
       <nav class="sidebar-menu">
-        <a 
-          href="#" 
+        <a
+          href="#"
           @click.prevent="currentMenu = 'posts'"
           :class="['menu-item', { active: currentMenu === 'posts' }]"
         >
           <span class="menu-icon">📝</span>
           <span class="menu-text">文章管理</span>
         </a>
-        <a 
+        <a
           v-if="user?.is_superuser"
-          href="#" 
+          href="#"
+          @click.prevent="currentMenu = 'categories'"
+          :class="['menu-item', { active: currentMenu === 'categories' }]"
+        >
+          <span class="menu-icon">📂</span>
+          <span class="menu-text">文章分类</span>
+        </a>
+        <a
+          v-if="user?.is_superuser"
+          href="#"
+          @click.prevent="currentMenu = 'tags'"
+          :class="['menu-item', { active: currentMenu === 'tags' }]"
+        >
+          <span class="menu-icon">🏷️</span>
+          <span class="menu-text">标签管理</span>
+        </a>
+        <a
+          v-if="user?.is_superuser"
+          href="#"
           @click.prevent="currentMenu = 'users'"
           :class="['menu-item', { active: currentMenu === 'users' }]"
         >
           <span class="menu-icon">👥</span>
           <span class="menu-text">用户管理</span>
         </a>
-        <a 
+        <a
           v-if="user?.is_superuser"
-          href="#" 
+          href="#"
           @click.prevent="currentMenu = 'roles'"
           :class="['menu-item', { active: currentMenu === 'roles' }]"
         >
@@ -171,7 +189,7 @@
           <h1 class="page-title">角色管理</h1>
           <button class="btn btn-primary" @click="openCreateRoleModal">+ 新建角色</button>
         </div>
-        
+
         <div v-if="rolesLoading" class="loading">加载中...</div>
         <div v-else-if="rolesError" class="error">{{ rolesError }}</div>
         <div v-else class="roles-table">
@@ -209,6 +227,92 @@
           </table>
           <div v-else class="no-data">
             <p>暂无角色数据</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 文章分类管理（仅超级管理员可见） -->
+      <div v-if="currentMenu === 'categories' && user?.is_superuser" class="content-section">
+        <div class="section-header">
+          <h1 class="page-title">文章分类</h1>
+          <button class="btn btn-primary" @click="openCreateCategoryModal">+ 新建分类</button>
+        </div>
+
+        <div v-if="categoriesLoading" class="loading">加载中...</div>
+        <div v-else-if="categoriesError" class="error">{{ categoriesError }}</div>
+        <div v-else class="categories-table">
+          <table v-if="categories.length > 0">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>分类名称</th>
+                <th>描述</th>
+                <th>文章数</th>
+                <th>创建时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="cat in categories" :key="cat.id">
+                <td>{{ cat.id }}</td>
+                <td class="title-cell">{{ cat.name }}</td>
+                <td>{{ cat.description || '-' }}</td>
+                <td>
+                  <span class="count-badge">{{ getCategoryPostCount(cat.id) }} 篇</span>
+                </td>
+                <td>{{ formatDate(cat.created_at) }}</td>
+                <td class="actions">
+                  <button @click="openEditCategoryModal(cat)" class="btn btn-sm btn-edit">编辑</button>
+                  <button @click="handleDeleteCategory(cat)" class="btn btn-sm btn-danger">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-else class="no-data">
+            <p>暂无分类数据</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 标签管理（仅超级管理员可见） -->
+      <div v-if="currentMenu === 'tags' && user?.is_superuser" class="content-section">
+        <div class="section-header">
+          <h1 class="page-title">标签管理</h1>
+          <button class="btn btn-primary" @click="openCreateTagModal">+ 新建标签</button>
+        </div>
+
+        <div v-if="tagsLoading" class="loading">加载中...</div>
+        <div v-else-if="tagsError" class="error">{{ tagsError }}</div>
+        <div v-else class="tags-table">
+          <table v-if="tags.length > 0">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>标签名称</th>
+                <th>文章数</th>
+                <th>创建时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="tag in tags" :key="tag.id">
+                <td>{{ tag.id }}</td>
+                <td class="title-cell">
+                  <span class="tag-badge">{{ tag.name }}</span>
+                </td>
+                <td>
+                  <span class="count-badge">{{ getTagPostCount(tag.name) }} 篇</span>
+                </td>
+                <td>{{ formatDate(tag.created_at) }}</td>
+                <td class="actions">
+                  <button @click="openEditTagModal(tag)" class="btn btn-sm btn-edit">编辑</button>
+                  <button @click="handleDeleteTag(tag)" class="btn btn-sm btn-danger">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-else class="no-data">
+            <p>暂无标签数据</p>
           </div>
         </div>
       </div>
@@ -285,13 +389,55 @@
         </form>
       </div>
     </div>
+
+    <!-- 创建/编辑分类弹窗 -->
+    <div v-if="showCreateCategoryModal || showEditCategoryModal" class="modal-overlay" @click.self="closeCategoryModal">
+      <div class="modal">
+        <h3>{{ showEditCategoryModal ? '编辑分类' : '新建分类' }}</h3>
+        <form @submit.prevent="handleSaveCategory">
+          <div class="form-group">
+            <label>分类名称 <span class="required">*</span></label>
+            <input v-model="currentCategory.name" type="text" required placeholder="请输入分类名称">
+          </div>
+          <div class="form-group">
+            <label>描述</label>
+            <textarea v-model="currentCategory.description" rows="3" placeholder="请输入分类描述（可选）"></textarea>
+          </div>
+          <div class="modal-actions">
+            <button type="submit" class="btn btn-primary" :disabled="savingCategory">
+              {{ savingCategory ? '保存中...' : '保存' }}
+            </button>
+            <button type="button" class="btn btn-secondary" @click="closeCategoryModal">取消</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 创建/编辑标签弹窗 -->
+    <div v-if="showCreateTagModal || showEditTagModal" class="modal-overlay" @click.self="closeTagModal">
+      <div class="modal">
+        <h3>{{ showEditTagModal ? '编辑标签' : '新建标签' }}</h3>
+        <form @submit.prevent="handleSaveTag">
+          <div class="form-group">
+            <label>标签名称 <span class="required">*</span></label>
+            <input v-model="currentTag.name" type="text" required placeholder="请输入标签名称">
+          </div>
+          <div class="modal-actions">
+            <button type="submit" class="btn btn-primary" :disabled="savingTag">
+              {{ savingTag ? '保存中...' : '保存' }}
+            </button>
+            <button type="button" class="btn btn-secondary" @click="closeTagModal">取消</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { postApi } from '../api'
+import { postApi, categoryApi, tagApi } from '../api'
 
 const router = useRouter()
 const currentMenu = ref('posts')
@@ -328,6 +474,31 @@ const currentRole = ref({
   icon: '👤',
   description: '',
   is_system: false
+})
+
+// 分类管理数据
+const categories = ref([])
+const categoriesLoading = ref(false)
+const categoriesError = ref(null)
+const showCreateCategoryModal = ref(false)
+const showEditCategoryModal = ref(false)
+const savingCategory = ref(false)
+const currentCategory = ref({
+  id: null,
+  name: '',
+  description: ''
+})
+
+// 标签管理数据
+const tags = ref([])
+const tagsLoading = ref(false)
+const tagsError = ref(null)
+const showCreateTagModal = ref(false)
+const showEditTagModal = ref(false)
+const savingTag = ref(false)
+const currentTag = ref({
+  id: null,
+  name: ''
 })
 
 const formatDate = (dateString) => {
@@ -540,6 +711,209 @@ const handleLogout = () => {
   }
 }
 
+// 加载分类列表
+const loadCategories = async () => {
+  try {
+    categoriesLoading.value = true
+    categoriesError.value = null
+    const response = await categoryApi.getCategories()
+    categories.value = response.data
+  } catch (err) {
+    categoriesError.value = '加载分类列表失败'
+    console.error(err)
+  } finally {
+    categoriesLoading.value = false
+  }
+}
+
+// 获取分类下的文章数
+const getCategoryPostCount = (categoryId) => {
+  return posts.value.filter(p => p.category_id === categoryId).length
+}
+
+// 打开创建分类弹窗
+const openCreateCategoryModal = () => {
+  currentCategory.value = {
+    id: null,
+    name: '',
+    description: ''
+  }
+  showCreateCategoryModal.value = true
+}
+
+// 打开编辑分类弹窗
+const openEditCategoryModal = (cat) => {
+  currentCategory.value = { ...cat }
+  showEditCategoryModal.value = true
+}
+
+// 关闭分类弹窗
+const closeCategoryModal = () => {
+  showCreateCategoryModal.value = false
+  showEditCategoryModal.value = false
+}
+
+// 保存分类（创建或编辑）
+const handleSaveCategory = async () => {
+  if (!currentCategory.value.name.trim()) {
+    alert('请输入分类名称')
+    return
+  }
+
+  try {
+    savingCategory.value = true
+
+    if (currentCategory.value.id) {
+      // 编辑分类
+      await categoryApi.updateCategory(currentCategory.value.id, {
+        name: currentCategory.value.name,
+        description: currentCategory.value.description
+      })
+      alert('分类更新成功')
+      showEditCategoryModal.value = false
+    } else {
+      // 创建分类
+      await categoryApi.createCategory({
+        name: currentCategory.value.name,
+        description: currentCategory.value.description
+      })
+      alert('分类创建成功')
+      showCreateCategoryModal.value = false
+    }
+    await loadCategories()
+  } catch (err) {
+    if (err.response?.status === 400) {
+      alert(err.response.data.detail || '分类名称已存在')
+    } else {
+      alert('保存失败')
+    }
+    console.error(err)
+  } finally {
+    savingCategory.value = false
+  }
+}
+
+// 删除分类
+const handleDeleteCategory = async (cat) => {
+  // 检查是否有文章使用该分类
+  const postCount = getCategoryPostCount(cat.id)
+  if (postCount > 0) {
+    alert(`该分类下有 ${postCount} 篇文章，不能删除`)
+    return
+  }
+
+  if (!confirm(`确定要删除分类 "${cat.name}" 吗？`)) return
+
+  try {
+    await categoryApi.deleteCategory(cat.id)
+    alert('分类删除成功')
+    await loadCategories()
+  } catch (err) {
+    alert('删除失败')
+    console.error(err)
+  }
+}
+
+// 加载标签列表
+const loadTags = async () => {
+  try {
+    tagsLoading.value = true
+    tagsError.value = null
+    const response = await tagApi.getTags()
+    tags.value = response.data
+  } catch (err) {
+    tagsError.value = '加载标签列表失败'
+    console.error(err)
+  } finally {
+    tagsLoading.value = false
+  }
+}
+
+// 获取标签下的文章数
+const getTagPostCount = (tagName) => {
+  return posts.value.filter(p => p.tags && p.tags.includes(tagName)).length
+}
+
+// 打开创建标签弹窗
+const openCreateTagModal = () => {
+  currentTag.value = {
+    id: null,
+    name: ''
+  }
+  showCreateTagModal.value = true
+}
+
+// 打开编辑标签弹窗
+const openEditTagModal = (tag) => {
+  currentTag.value = { ...tag }
+  showEditTagModal.value = true
+}
+
+// 关闭标签弹窗
+const closeTagModal = () => {
+  showCreateTagModal.value = false
+  showEditTagModal.value = false
+}
+
+// 保存标签（创建或编辑）
+const handleSaveTag = async () => {
+  if (!currentTag.value.name.trim()) {
+    alert('请输入标签名称')
+    return
+  }
+
+  try {
+    savingTag.value = true
+
+    if (currentTag.value.id) {
+      // 编辑标签
+      await tagApi.updateTag(currentTag.value.id, {
+        name: currentTag.value.name
+      })
+      alert('标签更新成功')
+      showEditTagModal.value = false
+    } else {
+      // 创建标签
+      await tagApi.createTag({
+        name: currentTag.value.name
+      })
+      alert('标签创建成功')
+      showCreateTagModal.value = false
+    }
+    await loadTags()
+  } catch (err) {
+    if (err.response?.status === 400) {
+      alert(err.response.data.detail || '标签名称已存在')
+    } else {
+      alert('保存失败')
+    }
+    console.error(err)
+  } finally {
+    savingTag.value = false
+  }
+}
+
+// 删除标签
+const handleDeleteTag = async (tag) => {
+  // 检查是否有文章使用该标签
+  const postCount = getTagPostCount(tag.name)
+  if (postCount > 0) {
+    alert(`该标签下有 ${postCount} 篇文章，不能删除`)
+    return
+  }
+
+  if (!confirm(`确定要删除标签 "${tag.name}" 吗？`)) return
+
+  try {
+    await tagApi.deleteTag(tag.id)
+    alert('标签删除成功')
+    await loadTags()
+  } catch (err) {
+    alert('删除失败')
+    console.error(err)
+  }
+}
+
 onMounted(() => {
   const userStr = localStorage.getItem('user')
   if (userStr) {
@@ -547,6 +921,8 @@ onMounted(() => {
   }
   loadPosts()
   loadUsers()
+  loadCategories()
+  loadTags()
 })
 </script>
 
@@ -1165,5 +1541,32 @@ textarea {
   border-radius: 12px;
   font-size: 0.75rem;
   color: #666;
+}
+
+/* 分类管理样式 */
+.categories-table {
+  overflow-x: auto;
+}
+
+.count-badge {
+  background: #e3f2fd;
+  color: #1976d2;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+/* 标签管理样式 */
+.tags-table {
+  overflow-x: auto;
+}
+
+.tag-badge {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 0.85rem;
 }
 </style>

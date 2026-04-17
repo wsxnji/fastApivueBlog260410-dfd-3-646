@@ -21,6 +21,45 @@
         </div>
         
         <div class="form-group">
+          <label for="cover_image">封面图片 URL（可选）</label>
+          <input
+            id="cover_image"
+            v-model="form.cover_image"
+            type="url"
+            placeholder="请输入封面图片 URL"
+          />
+          <div v-if="form.cover_image" class="cover-preview">
+            <img :src="form.cover_image" alt="封面预览" @error="handleImageError" />
+          </div>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group form-group-half">
+            <label for="category">文章分类</label>
+            <select id="category" v-model="form.category_id">
+              <option :value="null">请选择分类</option>
+              <option v-for="cat in categories" :key="cat.id" :value="cat.id">
+                {{ cat.name }}
+              </option>
+            </select>
+          </div>
+          
+          <div class="form-group form-group-half">
+            <label>文章标签</label>
+            <div class="tags-selector">
+              <label v-for="tag in availableTags" :key="tag.id" class="tag-checkbox">
+                <input
+                  type="checkbox"
+                  :value="tag.name"
+                  v-model="selectedTags"
+                />
+                <span class="tag-label">{{ tag.name }}</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        
+        <div class="form-group">
           <label for="summary">文章摘要</label>
           <textarea
             id="summary"
@@ -49,7 +88,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { postApi } from '../api'
+import { postApi, categoryApi, tagApi } from '../api'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
 
 const route = useRoute()
@@ -58,11 +97,35 @@ const post = ref(null)
 const loading = ref(true)
 const error = ref(null)
 const submitting = ref(false)
+const categories = ref([])
+const availableTags = ref([])
 const form = ref({
   title: '',
   summary: '',
-  content: ''
+  content: '',
+  cover_image: '',
+  category_id: null,
+  tags: ''
 })
+const selectedTags = ref([])
+
+const loadCategories = async () => {
+  try {
+    const response = await categoryApi.getCategories()
+    categories.value = response.data
+  } catch (err) {
+    console.error('加载分类失败:', err)
+  }
+}
+
+const loadTags = async () => {
+  try {
+    const response = await tagApi.getTags()
+    availableTags.value = response.data
+  } catch (err) {
+    console.error('加载标签失败:', err)
+  }
+}
 
 const loadPost = async () => {
   try {
@@ -73,7 +136,14 @@ const loadPost = async () => {
     form.value = {
       title: response.data.title,
       summary: response.data.summary || '',
-      content: response.data.content
+      content: response.data.content,
+      cover_image: response.data.cover_image || '',
+      category_id: response.data.category_id,
+      tags: response.data.tags || ''
+    }
+    // 解析已有标签
+    if (response.data.tags) {
+      selectedTags.value = response.data.tags.split(',').filter(t => t.trim())
     }
   } catch (err) {
     if (err.response?.status === 404) {
@@ -87,11 +157,18 @@ const loadPost = async () => {
   }
 }
 
+const handleImageError = () => {
+  alert('封面图片加载失败，请检查 URL 是否正确')
+}
+
 const handleSubmit = async () => {
   if (!form.value.content.trim()) {
     alert('请输入文章内容')
     return
   }
+  
+  // 将选中的标签转换为逗号分隔的字符串
+  form.value.tags = selectedTags.value.join(',')
   
   try {
     submitting.value = true
@@ -116,6 +193,8 @@ const handleSubmit = async () => {
 }
 
 onMounted(() => {
+  loadCategories()
+  loadTags()
   loadPost()
 })
 </script>
@@ -173,7 +252,9 @@ label {
 }
 
 input[type="text"],
-textarea {
+input[type="url"],
+textarea,
+select {
   width: 100%;
   padding: 12px 16px;
   border: 1px solid #e0e0e0;
@@ -181,16 +262,79 @@ textarea {
   font-size: 1rem;
   transition: border-color 0.3s;
   font-family: inherit;
+  background: white;
 }
 
 input[type="text"]:focus,
-textarea:focus {
+input[type="url"]:focus,
+textarea:focus,
+select:focus {
   outline: none;
   border-color: #667eea;
 }
 
 textarea {
   resize: vertical;
+}
+
+.form-row {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.form-group-half {
+  flex: 1;
+}
+
+.cover-preview {
+  margin-top: 1rem;
+  max-width: 400px;
+}
+
+.cover-preview img {
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.tags-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: white;
+}
+
+.tag-checkbox {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 6px 12px;
+  background: #f5f5f5;
+  border-radius: 20px;
+  transition: all 0.2s;
+}
+
+.tag-checkbox:hover {
+  background: #e8e8e8;
+}
+
+.tag-checkbox input {
+  margin-right: 6px;
+}
+
+.tag-label {
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.tag-checkbox input:checked + .tag-label {
+  color: #667eea;
+  font-weight: 500;
 }
 
 .form-actions {
@@ -205,27 +349,29 @@ textarea {
   padding: 12px 24px;
   border: none;
   border-radius: 8px;
+  font-size: 1rem;
   cursor: pointer;
   text-decoration: none;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.3s;
-  font-size: 1rem;
-  font-weight: 600;
+  font-weight: 500;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .btn-primary {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: #fff;
+  color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
-}
-
-.btn-primary:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
 .btn-secondary {
@@ -234,16 +380,23 @@ textarea {
 }
 
 .btn-secondary:hover {
-  background: #e0e0e0;
+  background: #e8e8e8;
 }
 
 .loading, .error {
   text-align: center;
   padding: 3rem;
-  color: #666;
+  font-size: 1.1rem;
 }
 
 .error {
   color: #e74c3c;
+}
+
+@media (max-width: 768px) {
+  .form-row {
+    flex-direction: column;
+    gap: 0;
+  }
 }
 </style>

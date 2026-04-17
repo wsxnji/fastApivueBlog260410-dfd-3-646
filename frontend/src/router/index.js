@@ -12,6 +12,22 @@ const routes = [
     component: () => import('../views/PostDetail.vue'),
   },
   {
+    path: '/category/:id',
+    name: 'CategoryPosts',
+    component: () => import('../views/CategoryPosts.vue'),
+  },
+  {
+    path: '/tag/:tag',
+    name: 'TagPosts',
+    component: () => import('../views/TagPosts.vue'),
+  },
+  {
+    path: '/favorites',
+    name: 'Favorites',
+    component: () => import('../views/Favorites.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('../views/Login.vue'),

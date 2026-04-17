@@ -92,4 +92,122 @@ export const postApi = {
   },
 }
 
+// 分类相关 API
+export const categoryApi = {
+  // 获取分类列表
+  getCategories() {
+    return api.get('/categories')
+  },
+
+  // 创建分类（仅超级管理员）
+  createCategory(data) {
+    return api.post('/categories', data)
+  },
+
+  // 更新分类（仅超级管理员）
+  updateCategory(id, data) {
+    return api.put(`/categories/${id}`, data)
+  },
+
+  // 删除分类（仅超级管理员）
+  deleteCategory(id) {
+    return api.delete(`/categories/${id}`)
+  },
+}
+
+// 标签相关 API
+export const tagApi = {
+  // 获取标签列表
+  getTags() {
+    return api.get('/tags')
+  },
+
+  // 创建标签（仅超级管理员）
+  createTag(data) {
+    return api.post('/tags', data)
+  },
+
+  // 更新标签（仅超级管理员）
+  updateTag(id, data) {
+    return api.put(`/tags/${id}`, data)
+  },
+
+  // 删除标签（仅超级管理员）
+  deleteTag(id) {
+    return api.delete(`/tags/${id}`)
+  },
+}
+
+// 评论相关 API
+export const commentApi = {
+  // 获取文章评论列表
+  getComments(postId) {
+    return api.get(`/posts/${postId}/comments`)
+  },
+
+  // 创建评论
+  createComment(postId, data) {
+    return api.post(`/posts/${postId}/comments`, data)
+  },
+
+  // 删除评论
+  deleteComment(commentId) {
+    return api.delete(`/comments/${commentId}`)
+  },
+}
+
+// 点赞相关 API
+export const likeApi = {
+  // 点赞文章
+  likePost(postId) {
+    return api.post(`/posts/${postId}/like`)
+  },
+
+  // 取消点赞
+  unlikePost(postId) {
+    return api.delete(`/posts/${postId}/like`)
+  },
+
+  // 检查点赞状态
+  checkLikeStatus(postId) {
+    return api.get(`/posts/${postId}/like/status`)
+  },
+}
+
+// 收藏相关 API
+export const favoriteApi = {
+  // 收藏文章
+  favoritePost(postId) {
+    return api.post(`/posts/${postId}/favorite`)
+  },
+
+  // 取消收藏
+  unfavoritePost(postId) {
+    return api.delete(`/posts/${postId}/favorite`)
+  },
+
+  // 检查收藏状态
+  checkFavoriteStatus(postId) {
+    return api.get(`/posts/${postId}/favorite/status`)
+  },
+
+  // 获取用户收藏列表
+  getFavorites() {
+    return api.get('/favorites')
+  },
+}
+
+// 用户相关 API
+export const userApi = {
+  // 获取用户列表（仅超级管理员）
+  getUsers(params) {
+    return api.get('/users', { params })
+  },
+
+  // 创建用户（仅超级管理员）
+  createUser(data, isSuperuser = false) {
+    return api.post('/users', data, { params: { is_superuser: isSuperuser } })
+  },
+}
+
 export default api

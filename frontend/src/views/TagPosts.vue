@@ -1,37 +1,10 @@
 <template>
-  <div class="home">
-    <div class="home-header">
-      <h1 class="page-title">📝 最新文章</h1>
-    </div>
-
-    <!-- 分类和标签筛选 -->
-    <div class="filter-section">
-      <div class="filter-group">
-        <span class="filter-label">分类：</span>
-        <div class="filter-tags">
-          <router-link
-            to="/"
-            :class="['filter-tag', { active: !currentCategory && !currentTag }]"
-          >全部</router-link>
-          <router-link
-            v-for="cat in categories"
-            :key="cat.id"
-            :to="`/category/${cat.id}`"
-            :class="['filter-tag', { active: currentCategory == cat.id }]"
-          >{{ cat.name }}</router-link>
-        </div>
-      </div>
-      <div v-if="tags.length > 0" class="filter-group">
-        <span class="filter-label">标签：</span>
-        <div class="filter-tags">
-          <router-link
-            v-for="tag in tags"
-            :key="tag.id"
-            :to="`/tag/${tag.name}`"
-            :class="['filter-tag', 'tag-style', { active: currentTag === tag.name }]"
-          >{{ tag.name }}</router-link>
-        </div>
-      </div>
+  <div class="tag-posts">
+    <div class="page-header">
+      <h1 class="page-title">
+        🏷️ 标签：{{ tagName }}
+      </h1>
+      <router-link to="/" class="btn-back">← 返回首页</router-link>
     </div>
 
     <div v-if="loading" class="loading">
@@ -39,6 +12,10 @@
       <p>加载中...</p>
     </div>
     <div v-else-if="error" class="error">{{ error }}</div>
+    <div v-else-if="posts.length === 0" class="empty-state">
+      <p>📝 该标签暂无文章</p>
+      <router-link to="/" class="btn btn-primary">返回首页</router-link>
+    </div>
     <div v-else class="posts-grid">
       <article v-for="post in posts" :key="post.id" class="post-card">
         <div v-if="post.cover_image" class="post-cover">
@@ -72,28 +49,20 @@
         </div>
       </article>
     </div>
-    <div v-if="posts.length === 0 && !loading" class="no-posts">
-      <p>📝 暂无文章</p>
-      <router-link v-if="isLoggedIn" to="/create" class="btn btn-primary">写第一篇文章</router-link>
-    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { postApi, categoryApi, tagApi } from '../api'
+import { postApi } from '../api'
 
 const route = useRoute()
 const posts = ref([])
-const categories = ref([])
-const tags = ref([])
 const loading = ref(true)
 const error = ref(null)
 
-const currentCategory = computed(() => route.params.id)
-const currentTag = computed(() => route.params.tag)
-const isLoggedIn = computed(() => !!localStorage.getItem('token'))
+const tagName = computed(() => route.params.tag)
 
 const truncateContent = (content) => {
   if (!content) return ''
@@ -115,35 +84,11 @@ const formatDate = (dateString) => {
   })
 }
 
-const loadCategories = async () => {
-  try {
-    const response = await categoryApi.getCategories()
-    categories.value = response.data
-  } catch (err) {
-    console.error('加载分类失败:', err)
-  }
-}
-
-const loadTags = async () => {
-  try {
-    const response = await tagApi.getTags()
-    tags.value = response.data
-  } catch (err) {
-    console.error('加载标签失败:', err)
-  }
-}
-
 const loadPosts = async () => {
   try {
     loading.value = true
     error.value = null
-    const params = { limit: 20 }
-    if (currentCategory.value) {
-      params.category_id = currentCategory.value
-    }
-    if (currentTag.value) {
-      params.tag = currentTag.value
-    }
+    const params = { tag: tagName.value, limit: 20 }
     const response = await postApi.getPublicPosts(params)
     posts.value = response.data
   } catch (err) {
@@ -155,19 +100,17 @@ const loadPosts = async () => {
 }
 
 onMounted(() => {
-  loadCategories()
-  loadTags()
   loadPosts()
 })
 </script>
 
 <style scoped>
-.home {
+.tag-posts {
   max-width: 1000px;
   margin: 0 auto;
 }
 
-.home-header {
+.page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -182,74 +125,60 @@ onMounted(() => {
   margin: 0;
 }
 
-/* 筛选区域 */
-.filter-section {
-  background: #f8f9fa;
-  padding: 1rem 1.5rem;
-  border-radius: 8px;
-  margin-bottom: 2rem;
-}
-
-.filter-group {
-  display: flex;
-  align-items: flex-start;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
-}
-
-.filter-group:last-child {
-  margin-bottom: 0;
-}
-
-.filter-label {
-  font-weight: 600;
-  color: #555;
-  white-space: nowrap;
-  padding-top: 4px;
-}
-
-.filter-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.filter-tag {
-  padding: 4px 12px;
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 16px;
-  font-size: 0.85rem;
-  color: #666;
-  text-decoration: none;
-  transition: all 0.2s;
-}
-
-.filter-tag:hover {
-  border-color: #667eea;
+.btn-back {
   color: #667eea;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
 }
 
-.filter-tag.active {
-  background: #667eea;
-  border-color: #667eea;
-  color: white;
+.btn-back:hover {
+  color: #764ba2;
 }
 
-.filter-tag.tag-style {
-  background: #f0f0f0;
-  border-color: #e0e0e0;
+.loading {
+  text-align: center;
+  padding: 3rem;
+  color: #666;
 }
 
-.filter-tag.tag-style.active {
-  background: #764ba2;
-  border-color: #764ba2;
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error {
+  text-align: center;
+  padding: 2rem;
+  color: #e74c3c;
+  background: #fdf2f2;
+  border-radius: 8px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: #666;
+}
+
+.empty-state p {
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
 }
 
 .btn-primary {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  margin-top: 1rem;
   padding: 10px 20px;
   border-radius: 6px;
   text-decoration: none;
@@ -298,47 +227,45 @@ onMounted(() => {
 
 .post-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
   flex-wrap: wrap;
-  gap: 0.5rem;
 }
 
 .category-badge {
-  padding: 4px 12px;
-  border-radius: 4px;
-  font-size: 0.8rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
-  background: #e3f2fd;
-  color: #1976d2;
 }
 
 .post-tags {
   display: flex;
-  flex-wrap: wrap;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .tag-item {
-  padding: 2px 10px;
-  background: #f5f5f5;
-  border: 1px solid #e0e0e0;
-  border-radius: 12px;
-  font-size: 0.75rem;
+  background: #f0f0f0;
   color: #666;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: 0.75rem;
 }
 
 .post-title {
   font-size: 1.5rem;
-  margin-bottom: 1rem;
+  margin: 0 0 0.75rem;
   line-height: 1.4;
 }
 
 .post-title a {
   color: #2c3e50;
   text-decoration: none;
-  transition: color 0.3s;
+  transition: color 0.2s;
 }
 
 .post-title a:hover {
@@ -349,23 +276,25 @@ onMounted(() => {
   color: #666;
   line-height: 1.6;
   margin-bottom: 1rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .post-meta {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding-top: 1rem;
+  border-top: 1px solid #f0f0f0;
+  font-size: 0.875rem;
   color: #888;
-  font-size: 0.85rem;
-  margin-bottom: 1rem;
-  flex-wrap: wrap;
-  gap: 0.5rem;
 }
 
 .meta-left {
   display: flex;
   gap: 1rem;
-  flex-wrap: wrap;
 }
 
 .meta-right {
@@ -380,46 +309,17 @@ onMounted(() => {
 }
 
 .post-actions {
-  display: flex;
-  justify-content: flex-end;
+  margin-top: 1rem;
 }
 
 .read-more {
   color: #667eea;
   text-decoration: none;
   font-weight: 500;
-  transition: color 0.3s;
+  transition: color 0.2s;
 }
 
 .read-more:hover {
   color: #764ba2;
-}
-
-.loading, .error, .no-posts {
-  text-align: center;
-  padding: 3rem;
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid #f3f3f3;
-  border-top: 4px solid #667eea;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 1rem;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.error {
-  color: #e74c3c;
-}
-
-.no-posts {
-  color: #888;
 }
 </style>
